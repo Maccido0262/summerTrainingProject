@@ -1,0 +1,132 @@
+#include <SoftwareSerial.h>
+#include <DHT.h>
+
+// Define SoftwareSerial pins
+SoftwareSerial mySerial(10, 11); // RX, TX
+
+bool stateFan = true;
+bool stateLight = true;
+
+// Group 1 addresses
+#define LIGHT_ON_GROUP1 0x11
+#define LIGHT_OFF_GROUP1 0x12
+#define FAN_ON_GROUP1 0x13
+#define FAN_OFF_GROUP1 0x14
+#define ALL_GROUP1 0x15
+
+// Group 2 addresses
+#define ON_GROUP2 0x11
+#define OFF_GROUP2 0x12
+#define FAN_GROUP2 0x13
+#define LIGHT_GROUP2 0x14
+#define OK_GROUP2 0x15
+
+// Group 3 addresses
+#define SEC_5_GROUP3 0x11
+#define SEC_4_GROUP3 0x12
+#define SEC_3_GROUP3 0x13
+#define SEC_2_GROUP3 0x14
+#define SEC_1_GROUP3 0x15
+
+byte com;
+int group = 1;
+
+#define LIGHT_PIN 4
+#define FAN_PIN 5
+#define DHTPIN 2        // Pin connected to the DHT11 sensor
+#define TEMP_THRESHOLD 24 // Temperature threshold in degrees Celsius
+
+// Initialize DHT sensor
+DHT dht(DHTPIN, DHT11);
+
+void setup() {
+    pinMode(LIGHT_PIN, OUTPUT);
+    pinMode(FAN_PIN, OUTPUT);
+
+    digitalWrite(LIGHT_PIN, HIGH);
+    digitalWrite(FAN_PIN, HIGH);
+
+    Serial.begin(9600);   // Start hardware serial for communication with the PC
+    mySerial.begin(38400); // Start software serial for communication with the device
+
+    // Initialize DHT sensor
+    dht.begin();
+
+    // Send command sequence
+    mySerial.write((byte)0xAA); // Explicitly cast to byte
+    mySerial.write((byte)0x00); // Waiting command
+    delay(100);
+  
+    mySerial.write((byte)0xAA); // Explicitly cast to byte
+    mySerial.write((byte)0x37); // Compact mode command
+
+    importGroup1();  // Start with importing Group 1
+}
+
+void loop() {
+    // Read temperature from DHT11 sensor
+    float temperatureC = dht.readTemperature();
+
+    // Check if the reading is valid
+    if (isnan(temperatureC)) {
+        Serial.println("Failed to read from DHT sensor!");
+        return;
+    }
+
+    // Print temperature to Serial Monitor
+    Serial.print("Temperature: ");
+    Serial.print(temperatureC);
+    Serial.println(" °C");
+
+    // Control fan based on temperature
+    if (temperatureC > TEMP_THRESHOLD) {
+        stateFan = false; // Turn the fan off
+    } else {
+        stateFan = true;  // Turn the fan on
+    }
+
+    // Check if there's any data available in the software serial buffer
+    while (mySerial.available()) {
+        com = mySerial.read();  // Read the byte from the serial buffer
+    
+        // Print the received byte to the Serial Monitor
+        Serial.print("Received byte: 0x");
+        Serial.print(com, HEX); // Print the byte in hexadecimal format
+        Serial.println();
+
+        if(com == LIGHT_ON_GROUP1){stateLight = false;}
+        else if(com == LIGHT_OFF_GROUP1){stateLight = true;}
+        else if(com == FAN_ON_GROUP1){stateFan = false;}
+        else if(com == FAN_OFF_GROUP1){stateFan = true;}
+        else if(com == ALL_GROUP1){
+          stateFan = false;
+          stateLight = false;
+        }
+        else{}
+
+    // Control fan based on temperature
+    if (temperatureC > TEMP_THRESHOLD) {
+        stateFan = false; // Turn the fan off
+    } else {
+        stateFan = true;  // Turn the fan on
+    }
+        digitalWrite(LIGHT_PIN, stateLight);
+        digitalWrite(FAN_PIN, stateFan);
+    }
+
+    // Update the fan state
+    digitalWrite(FAN_PIN, !stateFan); // Invert stateFan because HIGH turns off the fan
+    delay(2000); // Delay to avoid rapid changes and give time for sensor readings
+}
+
+void importGroup1() {
+    delay(10);
+    mySerial.write((byte)0xAA);
+    mySerial.write((byte)0x00);
+    delay(100);
+    mySerial.write((byte)0xAA);
+    mySerial.write((byte)0x21);  // Command specific to Group 1
+    delay(100);
+    com = 0x00;  // Reset value (if necessary)
+    Serial.println("Group 1 command sent.");
+}
